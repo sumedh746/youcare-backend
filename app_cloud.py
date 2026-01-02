@@ -26,10 +26,15 @@ SECRET_KEY = os.getenv("SECRET_KEY", "my_fixed_secret_key_2025")
 # 🗄️ PostgreSQL Settings
 # ============================================================
 
+# ============================================================
+# 🗄️ PostgreSQL Settings
+# ============================================================
+
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_NAME = os.getenv("DB_NAME", "motion_sensor_db")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASS = os.getenv("DB_PASS")
+DB_PORT = os.getenv("DB_PORT", "5432")
 
 
 def get_db_connection():
@@ -37,6 +42,7 @@ def get_db_connection():
     try:
         conn = psycopg2.connect(
             host=DB_HOST,
+            port=DB_PORT,
             dbname=DB_NAME,
             user=DB_USER,
             password=DB_PASS
