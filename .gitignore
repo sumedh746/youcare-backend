@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+
+# Logs
+logs/
+
+# Data files
+*.csv
+
+# Secrets (IMPORTANT)
+token.pickle
+client_secret.json
+
+# OS
+.DS_Store
+
