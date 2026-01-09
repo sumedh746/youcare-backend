@@ -6,11 +6,31 @@ import jwt
 import datetime
 import os
 import pytz
-import base64
-import pickle
-from email.mime.text import MIMEText
-from googleapiclient.discovery import build
-from google.auth.transport.requests import Request
+import requests
+
+
+def normalize_device_name(device_id: str) -> str:
+    """
+    Convert zigbee2mqtt / HA entity id into a clean device name
+    """
+    if not device_id:
+        return "Unknown Sensor"
+
+    # Example: zigbee2mqtt/bedroom_motion
+    # or binary_sensor.bedroom_motion_sensor_occupancy
+    name = device_id.split("/")[-1].split(".")[-1]
+
+    name = (
+        name.replace("_occupancy", "")
+            .replace("_contact", "")
+            .replace("_sensor", "")
+            .replace("_binary", "")
+            .replace("_", " ")
+            .strip()
+            .title()
+    )
+
+    return name
 
 
 # ============================================================
@@ -22,9 +42,10 @@ CORS(app)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "my_fixed_secret_key_2025")
 
-# ============================================================
-# 🗄️ PostgreSQL Settings
-# ============================================================
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+EMAIL_FROM = os.getenv("EMAIL_FROM")
+EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME")
+
 
 # ============================================================
 # 🗄️ PostgreSQL Settings
@@ -167,18 +188,24 @@ def add_event():
         print("❌ JWT Error:", e)
         return jsonify({"error": "Invalid or expired token"}), 403
 
-    data = request.json
+    data = request.json or {}
 
-    device_id = data.get("device_id")        # zigbee2mqtt/<sensor_name>
-    state = data.get("state")                # "on" / "off"
-    value = data.get("value")                # "motion" / "door"
-    message = data.get("message")            # readable message
-    name = data.get("name", "Unknown Sensor")
+    device_id = data.get("device_id")
+    state = data.get("state")
+    value = data.get("value")
+    message = data.get("message")
 
+    # ✅ SINGLE validation
     if not all([device_id, state, value]):
         return jsonify({"error": "Missing event fields"}), 400
 
+    # ✅ Normalize name ONCE
+    name = normalize_device_name(device_id)
+
+    # ✅ Single timestamp
     event_time = datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
+
+    print(f"🟢 Event received → {name} | {value} | {state}")
 
     # Save to DB
     conn = get_db_connection()
@@ -186,10 +213,10 @@ def add_event():
         return jsonify({"error": "DB connection failed"}), 500
 
     cur = conn.cursor()
-
     cur.execute(
         """
-        INSERT INTO sensor_events (device_id, user_id, name, state, value, message, event_time)
+        INSERT INTO sensor_events
+        (device_id, user_id, name, state, value, message, event_time)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """,
         (device_id, user_id, name, state, value, message, event_time)
@@ -199,7 +226,6 @@ def add_event():
     cur.close()
     conn.close()
 
-    print(f"🟢 Event saved: {message}")
     return jsonify({"message": "Event added"}), 201
 
 
@@ -281,51 +307,42 @@ def get_battery():
     return jsonify(latest_battery), 200
 
     
-
-# ============================================================
-# 📧 Gmail OAuth Helper
-# ============================================================
-
-def get_gmail_service():
-    creds = None
-
-    if os.path.exists("token.pickle"):
-        with open("token.pickle", "rb") as token:
-            creds = pickle.load(token)
-
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            raise Exception("❌ Gmail credentials invalid or missing token.pickle")
-
-    service = build("gmail", "v1", credentials=creds)
-    return service
-
 def send_email(to_email, subject, body):
     try:
-        service = get_gmail_service()
+        url = "https://api.brevo.com/v3/smtp/email"
 
-        message = MIMEText(body)
-        message["to"] = to_email
-        message["from"] = "sumedhmore313@gmail.com"
-        message["subject"] = subject
+        payload = {
+            "sender": {
+                "email": EMAIL_FROM,
+                "name": EMAIL_FROM_NAME
+            },
+            "to": [
+                {"email": to_email}
+            ],
+            "subject": subject,
+            "htmlContent": f"<html><body><p>{body}</p></body></html>"
+        }
 
-        raw_message = base64.urlsafe_b64encode(
-            message.as_bytes()
-        ).decode()
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "api-key": BREVO_API_KEY
+        }
 
-        service.users().messages().send(
-            userId="me",
-            body={"raw": raw_message}
-        ).execute()
+        response = requests.post(url, json=payload, headers=headers)
 
-        print(f"📧 Email sent to {to_email}")
-        return True
+        if response.status_code in (200, 201):
+            print(f"📧 Brevo email sent to {to_email}")
+            return True
+        else:
+            print("❌ Brevo error:", response.status_code, response.text)
+            return False
 
     except Exception as e:
-        print("❌ Email send failed:", e)
+        print("❌ Email exception:", e)
         return False
+
+
 
 def should_send_alert(user_id, alert_type):
     now = datetime.datetime.utcnow()
