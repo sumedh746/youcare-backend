@@ -88,9 +88,11 @@ def home():
 # ============================================================
 
 ALERT_COOLDOWNS = {
-    "inactivity": 30 * 60,  # 30 minutes
-    "door": 15 * 60,        # 15 minutes
-    "bathroom": 12 * 60     # 12 hours
+    "inactivity": 30 * 60,
+    "door": 15 * 60,
+    "bathroom": 12 * 60,
+    "sos": 0,       # 🚨 NEVER suppress emergency
+    "panic": 0     # safety alias
 }
 
 last_alert_sent = {}
@@ -379,6 +381,7 @@ def send_alert():
 
     data = request.json
     alert_type = data.get("type")
+    alert_type = alert_type.lower()
     recipients = data.get("recipients", [])
     metadata = data.get("metadata", {})
 
@@ -394,16 +397,20 @@ def send_alert():
         }), 200
 
     # --------------------------------------------------
-    # 📧 Build email
-    # --------------------------------------------------
-        # --------------------------------------------------
     # 📧 Build email (FIXED)
     # --------------------------------------------------
     now_str = datetime.datetime.now(
         pytz.timezone("Asia/Kolkata")
     ).strftime("%I:%M %p")
+    
+    if alert_type in ("sos", "panic"):
+        subject = f"🚨 EMERGENCY SOS ALERT ({now_str})"
+        body = ( "🚨 PANIC BUTTON PRESSED\n\n"
+        "Immediate assistance is required.\n\n"
+        "Please check on the user immediately."
+    )
 
-    if alert_type == "inactivity":
+    elif alert_type == "inactivity":
         subject = f"🚨 Inactivity Alert ({now_str})"
         body = f"No motion detected for {metadata.get('minutes', 0)} minutes."
 
