@@ -59,19 +59,22 @@ DB_PORT = os.getenv("DB_PORT", "5432")
 
 
 def get_db_connection():
-    """Connects to the PostgreSQL database."""
     try:
-        conn = psycopg2.connect(
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            return psycopg2.connect(database_url)
+
+        return psycopg2.connect(
             host=DB_HOST,
             port=DB_PORT,
             dbname=DB_NAME,
             user=DB_USER,
             password=DB_PASS
         )
-        return conn
     except Exception as e:
         print("❌ DB Connection Error:", e)
         return None
+
 
 # ============================================================
 # 🏠 Default Route
