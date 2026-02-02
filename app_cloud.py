@@ -51,26 +51,14 @@ EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME")
 # 🗄️ PostgreSQL Settings
 # ============================================================
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_NAME = os.getenv("DB_NAME", "motion_sensor_db")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS")
-DB_PORT = os.getenv("DB_PORT", "5432")
-
-
 def get_db_connection():
     try:
         database_url = os.getenv("DATABASE_URL")
-        if database_url:
-            return psycopg2.connect(database_url)
+        if not database_url:
+            raise Exception("DATABASE_URL not set")
 
-        return psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            dbname=DB_NAME,
-            user=DB_USER,
-            password=DB_PASS
-        )
+        return psycopg2.connect(database_url, sslmode="require")
+
     except Exception as e:
         print("❌ DB Connection Error:", e)
         return None
